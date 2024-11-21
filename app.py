@@ -77,24 +77,31 @@ def add_user(username, password):
 
 # Authenticate user
 def authenticate_user(username, password):
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username=?", (username,))
-    user = c.fetchone()  # Fetch one matching user
-    conn.close()
+    try:
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE username=?", (username,))
+        user = c.fetchone()  # Fetch one matching user
+        conn.close()
 
-    if user:
-        encrypted_password = user[1]  # Get the encrypted password from the database
-        decrypted_password = decrypt_password(encrypted_password)
+        if user:
+            encrypted_password = user[1]  # Get the encrypted password from the database
+            decrypted_password = decrypt_password(encrypted_password)
 
-        if decrypted_password is None:
-            return False
+            if decrypted_password is None:
+                st.error("Decryption failed. Please try again.")
+                return False
 
-        if decrypted_password == password:
-            return True
+            if decrypted_password == password:
+                return True
+            else:
+                st.error("Invalid password, please try again.")
+                return False
         else:
+            st.error("User not found, please sign up.")
             return False
-    else:
+    except Exception as e:
+        st.error(f"Error during authentication: {str(e)}")
         return False
 
 # Function to check privacy of sensitive data (CSV content)
@@ -109,9 +116,9 @@ def check_data_privacy(data):
     
     sensitive_patterns = {
         'email': r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+',
-        'credit_card': r'\b(?:\d[ -]*?){13,16}\b',
-        'biometric': r'\b(?:\d{5,15})\b',  # Example for biometric (simplified)
-        'location': r'\b(?:\d{1,3}\.\d+,\s*\d{1,3}\.\d+)\b'  # Example for location (latitude, longitude)
+        'credit_card': r'(\d{4}[ -]?){3}\d{4}',  # More accurate credit card format
+        'biometric': r'\d{5,15}',  # Assuming biometric data is a numeric ID
+        'location': r'\d{1,3}\.\d{5,6},\s*\d{1,3}\.\d{5,6}'  # Lat/Lon with more precision
     }
 
     for col in data.columns:
@@ -135,9 +142,9 @@ def generate_privacy_report(data):
     
     sensitive_patterns = {
         'email': r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+',
-        'credit_card': r'\b(?:\d[ -]*?){13,16}\b',
-        'biometric': r'\b(?:\d{5,15})\b',
-        'location': r'\b(?:\d{1,3}\.\d+,\s*\d{1,3}\.\d+)\b'
+        'credit_card': r'(\d{4}[ -]?){3}\d{4}',
+        'biometric': r'\d{5,15}',
+        'location': r'\d{1,3}\.\d{5,6},\s*\d{1,3}\.\d{5,6}'
     }
     
     for col in data.columns:
@@ -193,6 +200,10 @@ def main():
     st.write("Welcome to the Data Privacy Compliance App!")
     st.write("This app helps you check if your data complies with privacy regulations.")
     
+    # Help Section
+    st.sidebar.write("### Help")
+    st.sidebar.write("Use this app to scan files for sensitive data and generate privacy compliance reports.")
+    
     # Authentication Section
     choice = st.sidebar.selectbox("Login / Sign Up", ["Login", "Sign Up"])
     
@@ -220,25 +231,22 @@ def file_uploader():
     uploaded_file = st.file_uploader("Upload a file", type=["csv", "txt", "png", "jpg", "jpeg"])
     
     if uploaded_file is not None:
-        file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+        file_extension = os.path.splitext(uploaded_file.name)[1]
         
         if file_extension == '.csv':
             data = pd.read_csv(uploaded_file)
-            st.dataframe(data)
-            check_data_privacy(data)
-            st.text(generate_privacy_report(data))
-        
-        elif file_extension == '.txt':
-            text = uploaded_file.read().decode("utf-8")
-            st.text_area("Text File Content", text, height=300)
-            st.warning("Make sure to check your text for sensitive information manually.")
-        
+            st.write("### File Preview")
+            st.dataframe(data.head())  # Show preview of the uploaded file
+            check_data_privacy(data)  # Check for privacy issues in the CSV
+            st.text(generate_privacy_report(data))  # Generate a privacy report
         elif file_extension in ['.png', '.jpg', '.jpeg']:
             image = Image.open(uploaded_file)
-            st.image(image, caption='Uploaded Image', use_column_width=True)
-            st.warning("For images, manual privacy checks are recommended.")
+            st.image(image, caption='Uploaded Image.', use_column_width=True)
+            st.write("Image uploaded successfully!")
+        else:
+            st.error("Unsupported file type! Only CSV, TXT, and image files are supported.")
         
-        display_map()
+        display_map()  # Display sensitive zone map
 
 if __name__ == "__main__":
     create_database()
